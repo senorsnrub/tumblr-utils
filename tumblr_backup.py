@@ -23,6 +23,7 @@ import ssl
 import sys
 import threading
 import time
+import unicodedata
 import urllib
 import urllib2
 import urlparse
@@ -104,6 +105,8 @@ HTTP_CHUNK_SIZE = 1024 * 1024
 
 # bb-tumblr-backup API key
 API_KEY = '8YUsKJvcJxo2MDwmWMDiXZGuMuIbeCwuQGP5ZHSEA4jBJPMnJT'
+
+FILENAME_LIMIT = 250
 
 # ensure the right date/time format
 try:
@@ -302,6 +305,18 @@ def get_style():
         with open_text(theme_dir, 'style.css') as f:
             f.write(css + '\n')
         return
+
+
+def slugify(value):
+    """
+    Normalizes string, converts to lowercase, removes non-alpha characters,
+    and converts spaces to hyphens.
+    """
+    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore')
+    value = unicode(re.sub('[^\w\s-]', '', value).strip().lower())
+    value = unicode(re.sub('[-\s]+', '-', value))
+    # TODO: figure out what to do if there's a collision here...
+    return value[:FILENAME_LIMIT]
 
 
 class Index:
@@ -511,7 +526,8 @@ class Indices:
 
         self.fixup_media_links()
         tag_index = [self.blog.header('Tag index', 'tag-index', self.blog.title, True), '<ul>']
-        for tag, index in sorted(self.tags.items(), key=lambda kv: kv[1].name):
+        for _, index in sorted(self.tags.items(), key=lambda kv: kv[1].name):
+            tag = slugify(index.name)
             index.save_index(tag_index_dir + os.sep + tag,
                 u"Tag ‛%s’" % index.name
             )
