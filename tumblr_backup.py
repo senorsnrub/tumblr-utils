@@ -83,6 +83,7 @@ backup_css = 'backup.css'
 custom_css = 'custom.css'
 avatar_base = 'avatar'
 dir_index = 'index.html'
+flat_dir_index = 'flat_index.html'
 tag_index_dir = 'tags'
 
 blog_name = ''
@@ -142,6 +143,12 @@ def mkdir(dir, recursive=False):
             if e.errno != errno.EEXIST:
                 raise
 
+
+def file_name_for_tag(tag, index_dir):
+    if options.flat_index:
+        return "%s/%s.html" % (tag_index_dir, tag)
+    else:
+        return "%s/%s/%s" % (tags_index_dir, tag, dir_index)
 
 def tag_bare_name(tag):
     # Replaces tag, quotes, and unicode quotes
@@ -358,7 +365,7 @@ class Index:
         for page, start in enumerate(range(0, posts_month, posts_page), start=1):
 
             archive = [self.blog.header(strftime('%B %Y', tm), body_class='archive')]
-            archive.extend(p.get_post() for p in posts[start:start + posts_page])
+            archive.extend(p.get_post(index_dir) for p in posts[start:start + posts_page])
 
             file_name = FILE_FMT % (year, month, page)
             if options.dirs:
@@ -448,7 +455,7 @@ class FlatIndex:
                 posts.remove(post)
             current_page_content = [self.blog.header(body_class='flat')]
 
-            current_page_content.extend(post.get_post() for post in current_posts)
+            current_page_content.extend(post.get_post(index_dir) for post in current_posts)
 
             if posts != []:
                 np = name_for_page(FILE_FMT, page +1)
@@ -501,6 +508,7 @@ class Indices:
         global save_dir
         save_dir = level
         mkdir(path_to(tag_index_dir))
+
         self.fixup_media_links()
         tag_index = [self.blog.header('Tag index', 'tag-index', self.blog.title, True), '<ul>']
         for tag, index in sorted(self.tags.items(), key=lambda kv: kv[1].name):
@@ -514,7 +522,7 @@ class Indices:
         with open_text(tag_index_dir, dir_index) as f:
             f.write(u'\n'.join(tag_index))
 
-    def fixup_media_links(self):
+    def fixup_media_links(self, destination_level=save_dir):
         """Fixup all media links which now have to be two folders lower."""
         shallow_media = '../' + media_dir
         deep_media = save_dir + media_dir
@@ -978,7 +986,7 @@ class TumblrPost:
                 os.rename(oldname, path_to(self.media_dir, filename))
         return filename
 
-    def get_post(self):
+    def get_post(self, index_dir='.'):
         """returns this post in HTML"""
         typ = ('liked-' if options.likes else '') + self.typ
         post = self.post_header + u'<article class=%s id=p-%s>\n' % (typ, self.ident)
@@ -990,7 +998,7 @@ class TumblrPost:
         post += self.content
         foot = []
         if self.tags:
-            foot.append(u''.join(self.tag_link(t) for t in self.tags))
+            foot.append(u''.join(self.tag_link(t, index_dir) for t in self.tags))
         if self.note_count:
             foot.append(u'%d note%s' % (self.note_count, 's'[self.note_count == 1:]))
         if self.source_title and self.source_url:
@@ -1003,11 +1011,16 @@ class TumblrPost:
         return post
 
     @staticmethod
-    def tag_link(tag):
+    def tag_link(tag, index_dir):
         tag_disp = escape(TAG_FMT % tag)
         if not TAGLINK_FMT:
             return tag_disp + ' '
+
         url = TAGLINK_FMT % {'domain': blog_name, 'tag': urllib.quote(tag.encode('utf-8'))}
+
+        if options.local_tags:
+            url = file_name_for_tag(urllib.quote(tag.encode('utf-8')), index_dir)
+
         return u'<a href=%s>%s</a>\n' % (url, tag_disp)
 
     def save_post(self):
@@ -1029,7 +1042,7 @@ class BlosxomPost(TumblrPost):
     def get_image_url(self, image_url, offset):
         return image_url
 
-    def get_post(self):
+    def get_post(self, index_dir='.'):
         """returns this post as a Blosxom post"""
         post = self.title + '\nmeta-id: p-' + self.ident + '\nmeta-url: ' + self.url
         if self.tags:
@@ -1045,9 +1058,14 @@ class LocalPost:
             post = f.read()
         # extract all URL-encoded tags
         self.tags = []
+
         footer_pos = post.find('<footer>')
         if footer_pos > 0:
-            self.tags = re.findall(r'(?m)<a.+?/tagged/(.+?)>#(.+?)</a>', post[footer_pos:])
+            if options.local_tags:
+                regexp = r'(?m)<a.+?tags/(.+?)>#(.+?)</a>'
+            else:
+                regexp = r'(?m)<a.+?/tagged/(.+?)>#(.+?)</a>'
+            self.tags = re.findall(regexp, post[footer_pos:])
         # remove header and footer
         lines = post.split('\n')
         while lines and '<article ' not in lines[0]:
@@ -1065,13 +1083,18 @@ class LocalPost:
         self.date = os.stat(post_file).st_mtime
         self.tm = time.localtime(self.date)
 
-    def get_post(self):
+    def get_post(self, index_dir='.'):
+        if options.local_tags:
+            footer_pos = self.post.find('<footer>')
+            before_footer = self.post[:footer_pos]
+            return before_footer + re.sub(r'(?i)' + index_dir, "./", self.post[footer_pos:])
+
         return self.post
 
 
 class ThreadPool:
 
-    def __init__(self, thread_count=20, max_queue=1000):
+    def __init__(self, thread_count=1, max_queue=1000):
         self.queue = Queue.Queue(max_queue)
         self.quit = threading.Event()
         self.abort = threading.Event()
@@ -1173,6 +1196,9 @@ if __name__ == '__main__':
     )
     parser.add_option('--flat-index', action='store_true',
         help="Create a flat index as opposed to archive"
+    )
+    parser.add_option('--local-tags', action='store_true',
+        help='Makes the tags link go to the local source'
     )
     parser.add_option('-a', '--auto', type='int', metavar="HOUR",
         help="do a full backup at HOUR hours, otherwise do an incremental backup"
