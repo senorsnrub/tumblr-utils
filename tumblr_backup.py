@@ -23,7 +23,6 @@ import ssl
 import sys
 import threading
 import time
-import unicodedata
 import urllib
 import urllib2
 import urlparse
@@ -149,9 +148,12 @@ def mkdir(dir, recursive=False):
 
 def file_name_for_tag(tag, index_dir):
     if options.flat_index:
-        return "%s/%s.html" % (tag_index_dir, tag)
+        return "%s/%s.html" % (tag_index_dir, get_escaped_filename(tag))
     else:
-        return "%s/%s/%s" % (tags_index_dir, tag, dir_index)
+        return "%s/%s/%s" % (tags_index_dir, get_escaped_filename(tag), dir_index)
+
+def get_escaped_filename(name):
+    return name.replace("%", "%25")
 
 def tag_bare_name(tag):
     # Replaces tag, quotes, and unicode quotes
@@ -306,19 +308,6 @@ def get_style():
             f.write(css + '\n')
         return
 
-
-def slugify(value):
-    """
-    Normalizes string, converts to lowercase, removes non-alpha characters,
-    and converts spaces to hyphens.
-    """
-    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore')
-    value = unicode(re.sub('[^\w\s-]', '', value).strip().lower())
-    value = unicode(re.sub('[-\s]+', '-', value))
-    # TODO: figure out what to do if there's a collision here...
-    return value[:FILENAME_LIMIT]
-
-
 class Index:
 
     def __init__(self, blog, body_class='index'):
@@ -447,11 +436,13 @@ class FlatIndex:
         def name_for_page(file_fmt, page_num):
             if page_num < 0:
                 return ""
-
+            page_title = title
+            if re.findall(r'(?i)Tags', index_dir):
+                page_title = get_escaped_filename(title)
             if page_num == 0:
-                return title + ".html"
+                return page_title + '.html'
             else:
-                return FILE_FMT % (title, page)
+                return FILE_FMT % (page_title, page_num)
 
         while posts != []:
             if options.dirs:
@@ -473,7 +464,7 @@ class FlatIndex:
             current_page_content.extend(post.get_post(index_dir) for post in current_posts)
 
             if posts != []:
-                np = name_for_page(FILE_FMT, page +1)
+                np = name_for_page(FILE_FMT, page + 1)
             else:
                 np = ""
 
@@ -527,9 +518,9 @@ class Indices:
         self.fixup_media_links()
         tag_index = [self.blog.header('Tag index', 'tag-index', self.blog.title, True), '<ul>']
         for _, index in sorted(self.tags.items(), key=lambda kv: kv[1].name):
-            tag = slugify(index.name)
+            tag = urllib.quote_plus(index.name)
             index.save_index(tag_index_dir + os.sep + tag,
-                u"Tag ‛%s’" % index.name
+                u"Tag ‛%s’" % tag
             )
             tag_index.append(u'    <li><a href=%s/%s>%s</a></li>' % (
                 tag, dir_index, escape(index.name)
@@ -1035,7 +1026,7 @@ class TumblrPost:
         url = TAGLINK_FMT % {'domain': blog_name, 'tag': urllib.quote(tag.encode('utf-8'))}
 
         if options.local_tags:
-            url = file_name_for_tag(urllib.quote(tag.encode('utf-8')), index_dir)
+            url = file_name_for_tag(tag_bare_name(urllib.quote_plus(tag)), index_dir)
 
         return u'<a href=%s>%s</a>\n' % (url, tag_disp)
 
