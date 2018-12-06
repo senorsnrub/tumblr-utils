@@ -861,12 +861,12 @@ class TumblrPost:
         filetmpl = u'%(id)s_%(uploader_id)s_%(title)s.%(ext)s'
         ydl = youtube_dl.YoutubeDL({
             'outtmpl': join(self.media_folder, filetmpl),
-            'quiet': True, 
-            'restrictfilenames': True, 
+            'quiet': True,
+            'restrictfilenames': True,
             'noplaylist': True,
             'continuedl': True,
             'nooverwrites': True,
-            'retries': 3000,		
+            'retries': 3000,
             'fragment_retries': 3000,
             'ignoreerrors': True
         })
