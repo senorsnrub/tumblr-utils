@@ -421,6 +421,7 @@ class FlatIndex:
             index_dir = 'Tags/'
             title = tag_bare_name(title)
 
+        title = urllib.quote_plus(title)
         posts = []
         for year in sorted(self.index.keys(), reverse=options.reverse_index):
             self.collect_flat(index_dir, year, posts)
@@ -433,12 +434,15 @@ class FlatIndex:
         FILE_FMT = '%s-p%d.html'
         page = 0
 
-        def name_for_page(file_fmt, page_num):
+        def name_for_page(file_fmt, page_num, name = title):
+            if re.findall(r'(?i)Tags', index_dir):
+                name = get_escaped_filename(name)
+            return name_for_file(file_fmt, page_num, name)
+
+
+        def name_for_file(file_fmt, page_num, page_title = title):
             if page_num < 0:
                 return ""
-            page_title = title
-            if re.findall(r'(?i)Tags', index_dir):
-                page_title = get_escaped_filename(title)
             if page_num == 0:
                 return page_title + '.html'
             else:
@@ -451,9 +455,8 @@ class FlatIndex:
                 base = ''
 
             previous_page = ""
-            file_name = name_for_page(FILE_FMT, page)
+            file_name = name_for_file(FILE_FMT, page, title)
             previous_page = name_for_page(FILE_FMT, page - 1)
-
             file_page = open_text(flat_dir, index_dir, file_name)
 
             current_posts = posts[0:per_page]
@@ -518,12 +521,12 @@ class Indices:
         self.fixup_media_links()
         tag_index = [self.blog.header('Tag index', 'tag-index', self.blog.title, True), '<ul>']
         for _, index in sorted(self.tags.items(), key=lambda kv: kv[1].name):
-            tag = urllib.quote_plus(index.name)
+            tag = tag_bare_name(index.name)
             index.save_index(tag_index_dir + os.sep + tag,
                 u"Tag ‛%s’" % tag
             )
             tag_index.append(u'    <li><a href=%s/%s>%s</a></li>' % (
-                tag, dir_index, escape(index.name)
+                tag, dir_index, escape(tag)
             ))
         tag_index.extend(['</ul>', ''])
         with open_text(tag_index_dir, dir_index) as f:
@@ -1026,7 +1029,7 @@ class TumblrPost:
         url = TAGLINK_FMT % {'domain': blog_name, 'tag': urllib.quote(tag.encode('utf-8'))}
 
         if options.local_tags:
-            url = file_name_for_tag(tag_bare_name(urllib.quote_plus(tag)), index_dir)
+            url = file_name_for_tag(urllib.quote_plus(tag_bare_name(tag)), index_dir)
 
         return u'<a href=%s>%s</a>\n' % (url, tag_disp)
 
